@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wisperfree"
+version = "0.1.0"
+description = "WisperFree — fully offline, privacy-first AI voice dictation (Whisper + Ollama). No cloud calls; no data leaves the device."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "pydantic>=2.5",
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "pyyaml>=6.0",
+    "httpx>=0.26",
+]
+
+[project.optional-dependencies]
+# Stage 1: local ASR backends
+asr = [
+    "faster-whisper>=1.0",
+]
+# Microphone capture + VAD + global hotkeys
+audio = [
+    "sounddevice>=0.4.6",
+    "webrtcvad>=2.0.10",
+    "pynput>=1.7.6",
+]
+# Stage "train": local LoRA fine-tuning on correction pairs
+finetune = [
+    "torch>=2.1",
+    "transformers>=4.38",
+    "peft>=0.9",
+    "datasets>=2.16",
+]
+macos = ["pyobjc-framework-Cocoa>=10.0", "pyobjc-framework-Quartz>=10.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.26"]
+
+[project.scripts]
+wisperfree = "wisperfree.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["wisperfree*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
