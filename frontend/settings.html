@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WisperFree Settings</title>
+<style>
+  :root {
+    --bg: #f6f6f8; --panel: #ffffff; --text: #1c1c1e; --muted: #6e6e73;
+    --accent: #4f6bf0; --border: #e3e3e8; --danger: #d64545; --ok: #2e9e5b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1b1f; --panel: #26262b; --text: #f2f2f4; --muted: #9a9aa2;
+      --accent: #7d92ff; --border: #3a3a41; --danger: #ff6b6b; --ok: #4cc986;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); display: flex; height: 100vh;
+  }
+  nav {
+    width: 180px; padding: 16px 8px; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 2px; flex-shrink: 0;
+  }
+  nav h1 { font-size: 15px; margin: 4px 10px 14px; }
+  nav button {
+    text-align: left; padding: 8px 10px; border: 0; background: none;
+    color: var(--text); border-radius: 8px; cursor: pointer; font-size: 13.5px;
+  }
+  nav button.active { background: var(--accent); color: #fff; }
+  main { flex: 1; overflow-y: auto; padding: 22px 26px; }
+  section { display: none; max-width: 720px; }
+  section.visible { display: block; }
+  h2 { font-size: 17px; margin: 0 0 4px; }
+  p.hint { color: var(--muted); margin: 0 0 16px; font-size: 12.5px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 14px;
+  }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .row label { width: 170px; color: var(--muted); font-size: 13px; flex-shrink: 0; }
+  input[type=text], select, textarea {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; font-size: 13.5px; min-width: 220px;
+  }
+  textarea { width: 100%; min-height: 64px; resize: vertical; }
+  button.action {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 13.5px;
+  }
+  button.subtle {
+    background: none; border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12.5px;
+  }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; }
+  td { padding: 6px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+  .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 99px;
+    font-size: 11.5px; border: 1px solid var(--border); color: var(--muted);
+  }
+  .pill.ok { color: var(--ok); border-color: var(--ok); }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .status-dot.on { background: var(--ok); }
+  #toast {
+    position: fixed; bottom: 16px; right: 16px; background: var(--text);
+    color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0;
+    transition: opacity .25s; pointer-events: none; font-size: 13px;
+  }
+  #toast.show { opacity: .92; }
+  .raw { color: var(--muted); text-decoration: line-through; }
+</style>
+</head>
+<body>
+<nav>
+  <h1>🎙 WisperFree</h1>
+  <button data-tab="general" class="active">General</button>
+  <button data-tab="dictionary">Dictionary</button>
+  <button data-tab="tones">Tone profiles</button>
+  <button data-tab="history">History</button>
+  <button data-tab="training">Training</button>
+</nav>
+<main>
+
+<section id="tab-general" class="visible">
+  <h2>General</h2>
+  <p class="hint">Everything runs locally — no data ever leaves this device.</p>
+  <div class="card">
+    <div class="row">
+      <label>Daemon</label>
+      <span><span id="daemon-dot" class="status-dot"></span> <span id="daemon-state">checking…</span></span>
+      <button class="action" id="btn-toggle">Toggle dictation</button>
+    </div>
+    <div class="row"><label>Hotkey</label><input type="text" id="cfg-hotkey"><span class="pill">pynput syntax, e.g. &lt;ctrl&gt;+&lt;space&gt;</span></div>
+  </div>
+  <div class="card">
+    <div class="row"><label>Whisper backend</label>
+      <select id="cfg-asr-backend">
+        <option value="faster_whisper">faster-whisper (CTranslate2)</option>
+        <option value="whisper_cpp">whisper.cpp</option>
+      </select>
+    </div>
+    <div class="row"><label>Whisper model</label>
+      <select id="cfg-asr-model">
+        <option>tiny</option><option>tiny.en</option><option>base</option>
+        <option>base.en</option><option>small</option><option>small.en</option>
+        <option>medium</option><option>large-v3</option>
+      </select>
+    </div>
+    <div class="row"><label>Device</label>
+      <select id="cfg-asr-device"><option>auto</option><option>cpu</option><option>cuda</option></select>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row"><label>AI cleanup (Stage 2)</label>
+      <select id="cfg-llm-enabled"><option value="true">on — rewrite what I meant</option><option value="false">off — inject raw transcript</option></select>
+    </div>
+    <div class="row"><label>Ollama model</label><input type="text" id="cfg-llm-model" placeholder="llama3.2:3b"></div>
+    <div class="row"><label>Ollama host</label><input type="text" id="cfg-llm-host" placeholder="http://127.0.0.1:11434"></div>
+  </div>
+  <button class="action" id="btn-save-general">Save settings</button>
+</section>
+
+<section id="tab-dictionary">
+  <h2>Personal dictionary</h2>
+  <p class="hint">Names, jargon, and acronyms here bias both transcription and cleanup.</p>
+  <div class="card">
+    <div class="row">
+      <input type="text" id="dict-term" placeholder="Term (e.g. Kubernetes)">
+      <input type="text" id="dict-hint" placeholder="Hint (optional)">
+      <button class="action" id="btn-dict-add">Add</button>
+    </div>
+    <table><thead><tr><th>Term</th><th>Hint</th><th></th></tr></thead><tbody id="dict-rows"></tbody></table>
+  </div>
+  <div class="card">
+    <h2 style="font-size:14px">Suggested additions</h2>
+    <p class="hint">Words you repeatedly typed in while correcting transcripts.</p>
+    <table><tbody id="suggestion-rows"></tbody></table>
+  </div>
+</section>
+
+<section id="tab-tones">
+  <h2>Per-app tone profiles</h2>
+  <p class="hint">When the app name matches a pattern, the cleanup pass adopts that tone.</p>
+  <div class="card">
+    <div class="row">
+      <input type="text" id="tone-pattern" placeholder="App pattern (e.g. slack)">
+      <select id="tone-tone">
+        <option>casual</option><option>formal</option><option>technical</option><option>neutral</option>
+      </select>
+      <button class="action" id="btn-tone-add">Save</button>
+    </div>
+    <div class="row"><textarea id="tone-instructions" placeholder="Extra instructions for this app (optional)"></textarea></div>
+    <table><thead><tr><th>Pattern</th><th>Tone</th><th>Instructions</th><th></th></tr></thead><tbody id="tone-rows"></tbody></table>
+  </div>
+</section>
+
+<section id="tab-history">
+  <h2>Dictation history</h2>
+  <p class="hint">Edit the final text and save it as a correction — corrections train the model and feed dictionary suggestions.</p>
+  <div class="card">
+    <table><thead><tr><th style="width:45%">Transcribed → injected</th><th>Your correction</th><th></th></tr></thead><tbody id="history-rows"></tbody></table>
+  </div>
+  <h2 style="font-size:15px">Logged corrections</h2>
+  <div class="card">
+    <table><thead><tr><th>Raw</th><th>Final</th><th>App</th><th>Trained</th><th></th></tr></thead><tbody id="correction-rows"></tbody></table>
+  </div>
+</section>
+
+<section id="tab-training">
+  <h2>Train on my corrections</h2>
+  <p class="hint">Runs a local LoRA fine-tune of the cleanup model on your logged corrections. Nothing is uploaded.</p>
+  <div class="card">
+    <div class="row">
+      <button class="action" id="btn-train">Train on my corrections</button>
+      <span id="train-state" class="pill">idle</span>
+    </div>
+    <div class="row"><label>Automatic schedule</label>
+      <select id="cfg-ft-schedule">
+        <option value="off">off</option>
+        <option value="weekly">weekly</option>
+        <option value="every_n">every N corrections</option>
+      </select>
+      <input type="text" id="cfg-ft-n" style="min-width:80px;width:80px" placeholder="50">
+      <button class="subtle" id="btn-ft-save">Save</button>
+    </div>
+  </div>
+  <div class="card">
+    <table><thead><tr><th>Started</th><th>Status</th><th>Pairs</th><th>Detail</th></tr></thead><tbody id="run-rows"></tbody></table>
+  </div>
+</section>
+
+</main>
+<div id="toast"></div>
+
+<script>
+const API = 'http://127.0.0.1:8765';
+
+async function api(route, options = {}) {
+  const response = await fetch(API + route, {
+    headers: { 'Content-Type': 'application/json' }, ...options,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || response.status);
+  }
+  return response.json();
+}
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s ?? '').toString()
+  .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+  .replaceAll('"','&quot;');
+function toast(message) {
+  const el = $('toast');
+  el.textContent = message;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ---- tabs ----
+document.querySelectorAll('nav button').forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll('nav button').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('main section').forEach((s) => s.classList.remove('visible'));
+    btn.classList.add('active');
+    $('tab-' + btn.dataset.tab).classList.add('visible');
+    refreshAll();
+  };
+});
+
+// ---- general ----
+async function loadGeneral() {
+  try {
+    const status = await api('/api/status');
+    $('daemon-dot').classList.toggle('on', true);
+    $('daemon-state').textContent = status.dictating ? 'listening' : 'running (idle)';
+    const cfg = await api('/api/config');
+    $('cfg-hotkey').value = cfg.hotkey.toggle;
+    $('cfg-asr-backend').value = cfg.asr.backend;
+    $('cfg-asr-model').value = cfg.asr.model;
+    $('cfg-asr-device').value = cfg.asr.device;
+    $('cfg-llm-enabled').value = String(cfg.llm.enabled);
+    $('cfg-llm-model').value = cfg.llm.model;
+    $('cfg-llm-host').value = cfg.llm.host;
+    $('cfg-ft-schedule').value = cfg.finetune.auto_schedule;
+    $('cfg-ft-n').value = cfg.finetune.every_n_corrections;
+  } catch {
+    $('daemon-dot').classList.remove('on');
+    $('daemon-state').textContent = 'daemon offline — run `wisperfree`';
+  }
+}
+$('btn-toggle').onclick = async () => {
+  try {
+    const result = await api('/api/dictation/toggle', { method: 'POST' });
+    toast(result.dictating ? 'Listening…' : 'Dictation stopped');
+  } catch (err) { toast('Toggle failed: ' + err.message); }
+  loadGeneral();
+};
+$('btn-save-general').onclick = async () => {
+  const patch = {
+    hotkey: { toggle: $('cfg-hotkey').value },
+    asr: {
+      backend: $('cfg-asr-backend').value,
+      model: $('cfg-asr-model').value,
+      device: $('cfg-asr-device').value,
+    },
+    llm: {
+      enabled: $('cfg-llm-enabled').value === 'true',
+      model: $('cfg-llm-model').value,
+      host: $('cfg-llm-host').value,
+    },
+  };
+  try {
+    await api('/api/config', { method: 'PUT', body: JSON.stringify({ patch }) });
+    toast('Settings saved');
+  } catch (err) { toast('Save failed: ' + err.message); }
+};
+
+// ---- dictionary ----
+async function loadDictionary() {
+  const entries = await api('/api/dictionary');
+  $('dict-rows').innerHTML = entries.map((e) => `
+    <tr><td>${esc(e.term)}</td><td>${esc(e.hint)}</td>
+    <td><button class="subtle danger" onclick="removeDict(${e.id})">Remove</button></td></tr>
+  `).join('');
+  const suggestions = await api('/api/dictionary/suggestions');
+  $('suggestion-rows').innerHTML = suggestions.length ? suggestions.map((s) => `
+    <tr><td><b>${esc(s.term)}</b> <span class="pill">corrected ${s.count}×</span></td>
+    <td style="text-align:right">
+      <button class="subtle" onclick="acceptSuggestion('${esc(s.term)}')">Add to dictionary</button>
+      <button class="subtle danger" onclick="dismissSuggestion('${esc(s.term)}')">Dismiss</button>
+    </td></tr>
+  `).join('') : '<tr><td class="hint">No suggestions yet.</td></tr>';
+}
+$('btn-dict-add').onclick = async () => {
+  const term = $('dict-term').value.trim();
+  if (!term) return;
+  await api('/api/dictionary', {
+    method: 'POST',
+    body: JSON.stringify({ term, hint: $('dict-hint').value || null }),
+  });
+  $('dict-term').value = ''; $('dict-hint').value = '';
+  loadDictionary();
+};
+window.removeDict = async (id) => { await api(`/api/dictionary/${id}`, { method: 'DELETE' }); loadDictionary(); };
+window.acceptSuggestion = async (term) => {
+  await api('/api/dictionary', { method: 'POST', body: JSON.stringify({ term }) });
+  toast(`Added “${term}”`); loadDictionary();
+};
+window.dismissSuggestion = async (term) => {
+  await api(`/api/dictionary/suggestions/${encodeURIComponent(term)}/dismiss`, { method: 'POST' });
+  loadDictionary();
+};
+
+// ---- tone profiles ----
+async function loadTones() {
+  const profiles = await api('/api/tone-profiles');
+  $('tone-rows').innerHTML = profiles.map((p) => `
+    <tr><td>${esc(p.app_pattern)}</td><td><span class="pill">${esc(p.tone)}</span></td>
+    <td>${esc(p.instructions)}</td>
+    <td><button class="subtle danger" onclick="removeTone(${p.id})">Remove</button></td></tr>
+  `).join('');
+}
+$('btn-tone-add').onclick = async () => {
+  const app_pattern = $('tone-pattern').value.trim();
+  if (!app_pattern) return;
+  await api('/api/tone-profiles', {
+    method: 'POST',
+    body: JSON.stringify({
+      app_pattern,
+      tone: $('tone-tone').value,
+      instructions: $('tone-instructions').value || null,
+    }),
+  });
+  $('tone-pattern').value = ''; $('tone-instructions').value = '';
+  loadTones();
+};
+window.removeTone = async (id) => { await api(`/api/tone-profiles/${id}`, { method: 'DELETE' }); loadTones(); };
+
+// ---- history & corrections ----
+let historyCache = [];
+async function loadHistory() {
+  historyCache = await api('/api/history');
+  $('history-rows').innerHTML = historyCache.length ? historyCache.map((e, i) => `
+    <tr>
+      <td><span class="raw">${esc(e.raw_text)}</span><br>${esc(e.final_text)}
+        <br><span class="pill">${esc(e.app_name || 'unknown app')}</span>
+        <span class="pill">${(e.asr_latency_s + e.llm_latency_s).toFixed(2)}s</span></td>
+      <td><textarea id="hist-edit-${i}">${esc(e.final_text)}</textarea></td>
+      <td><button class="subtle" onclick="saveCorrection(${i})">Save correction</button></td>
+    </tr>
+  `).join('') : '<tr><td class="hint">No dictations yet this session.</td></tr>';
+
+  const corrections = await api('/api/corrections');
+  $('correction-rows').innerHTML = corrections.map((c) => `
+    <tr><td>${esc(c.raw_transcript)}</td><td>${esc(c.final_text)}</td>
+    <td>${esc(c.app_name)}</td>
+    <td><span class="pill ${c.used_in_training ? 'ok' : ''}">${c.used_in_training ? 'yes' : 'not yet'}</span></td>
+    <td><button class="subtle danger" onclick="removeCorrection(${c.id})">Delete</button></td></tr>
+  `).join('');
+}
+window.saveCorrection = async (index) => {
+  const event = historyCache[index];
+  const final_text = $(`hist-edit-${index}`).value.trim();
+  if (!final_text || final_text === event.final_text) { toast('No change to save'); return; }
+  await api('/api/corrections', {
+    method: 'POST',
+    body: JSON.stringify({
+      raw_transcript: event.raw_text,
+      cleaned_transcript: event.final_text,
+      final_text,
+      app_name: event.app_name,
+    }),
+  });
+  toast('Correction logged'); loadHistory();
+};
+window.removeCorrection = async (id) => { await api(`/api/corrections/${id}`, { method: 'DELETE' }); loadHistory(); };
+
+// ---- training ----
+async function loadTraining() {
+  const status = await api('/api/status');
+  $('train-state').textContent = status.training_running ? 'training…' : 'idle';
+  $('train-state').classList.toggle('ok', status.training_running);
+  const runs = await api('/api/finetune/runs');
+  $('run-rows').innerHTML = runs.length ? runs.map((r) => `
+    <tr><td>${esc(r.started_at)}</td>
+    <td><span class="pill ${r.status === 'succeeded' ? 'ok' : ''}">${esc(r.status)}</span></td>
+    <td>${r.pairs_used}</td><td>${esc(r.detail)}</td></tr>
+  `).join('') : '<tr><td class="hint">No training runs yet.</td></tr>';
+}
+$('btn-train').onclick = async () => {
+  try {
+    await api('/api/finetune/trigger', { method: 'POST' });
+    toast('Training started');
+  } catch (err) { toast('Could not start: ' + err.message); }
+  loadTraining();
+};
+$('btn-ft-save').onclick = async () => {
+  const patch = {
+    finetune: {
+      auto_schedule: $('cfg-ft-schedule').value,
+      every_n_corrections: parseInt($('cfg-ft-n').value || '50', 10),
+    },
+  };
+  await api('/api/config', { method: 'PUT', body: JSON.stringify({ patch }) });
+  toast('Schedule saved');
+};
+
+function refreshAll() {
+  loadGeneral();
+  loadDictionary().catch(() => {});
+  loadTones().catch(() => {});
+  loadHistory().catch(() => {});
+  loadTraining().catch(() => {});
+}
+refreshAll();
+setInterval(loadTraining, 5000);
+</script>
+</body>
+</html>
