@@ -208,10 +208,19 @@ def create_app(daemon: Daemon) -> FastAPI:
     # ---- voice training (fine-tune Whisper on the user's voice) ---------------
 
     @app.get("/api/voicetrain/prompts")
-    def voicetrain_prompts(n: int = 20):
-        from wisperfree.voicetrain import generate_prompts
+    def voicetrain_prompts(n: int = 20, use_llm: bool = True):
+        from wisperfree.voicetrain.prompts import (
+            generate_llm_prompts,
+            generate_prompts,
+        )
 
-        return generate_prompts(daemon.dictionary.terms(), n=n)
+        terms = daemon.dictionary.terms()
+        # Use the local LLM for fresh, varied sentences when Stage 2 is
+        # enabled; otherwise fall back to the curated corpus. Both paths
+        # always return n prompts.
+        if use_llm and daemon.config.llm.enabled:
+            return generate_llm_prompts(daemon.pipeline.llm, terms, n=n)
+        return generate_prompts(terms, n=n)
 
     @app.get("/api/voicetrain/samples")
     def voicetrain_samples():

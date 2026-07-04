@@ -59,15 +59,40 @@ def resolve_base_model(config: VoiceTrainConfig, asr_model: str) -> str:
 def split_samples(
     samples: list[VoiceSample], holdout_every: int
 ) -> tuple[list[VoiceSample], list[VoiceSample]]:
-    """Deterministic split so the WER report is stable across runs."""
+    """Deterministic train/holdout split, grouped by sentence text.
+
+    The split is by *sentence*, not by recording: every Nth distinct
+    prompt text goes entirely to the holdout. This keeps repeated takes
+    of the same sentence from straddling train and holdout, which would
+    leak the answer and make the WER report look better than it is.
+    """
     if len(samples) < 3:
         return samples, []
-    holdout = [s for i, s in enumerate(samples) if (i + 1) % holdout_every == 0]
-    if not holdout:
-        holdout = [samples[-1]]
-    holdout_ids = {s.id for s in holdout}
-    train = [s for s in samples if s.id not in holdout_ids]
+
+    # distinct prompt texts, in first-seen order (deterministic)
+    order: list[str] = []
+    seen: set[str] = set()
+    for s in samples:
+        key = _norm_text(s.prompt_text)
+        if key not in seen:
+            seen.add(key)
+            order.append(key)
+
+    holdout_keys = {key for i, key in enumerate(order) if (i + 1) % holdout_every == 0}
+    if not holdout_keys and order:
+        holdout_keys = {order[-1]}  # force a holdout so WER is always reported
+
+    train, holdout = [], []
+    for s in samples:
+        (holdout if _norm_text(s.prompt_text) in holdout_keys else train).append(s)
+    # never let the holdout swallow every sample
+    if not train:
+        return samples, []
     return train, holdout
+
+
+def _norm_text(text: str) -> str:
+    return " ".join(text.lower().split())
 
 
 def load_wav_16k(path: str | Path) -> np.ndarray:
