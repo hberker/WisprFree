@@ -1,23 +1,4 @@
-import pytest
-from fastapi.testclient import TestClient
-
-from tests.conftest import FakeASR, FakeInjector, FakeLLM, FakeContextDetector
-from wisperfree.api import create_app
-from wisperfree.daemon import Daemon
-
-
-@pytest.fixture
-def client(config, tmp_path, monkeypatch):
-    # Config lives in tmp so apply_config_patch never touches the real home dir
-    monkeypatch.setenv("WISPERFREE_CONFIG_DIR", str(tmp_path / "cfg"))
-    daemon = Daemon(config)
-    # Swap hardware/network-facing pieces for fakes
-    daemon.pipeline.asr = FakeASR()
-    daemon.pipeline.llm = FakeLLM(reply="Cleaned text.")
-    daemon.pipeline.injector = FakeInjector(config.injection)
-    daemon.pipeline.context_detector = FakeContextDetector()
-    yield TestClient(create_app(daemon))
-    daemon.db.close()
+# the shared `client` fixture lives in tests/conftest.py
 
 
 def test_status(client):

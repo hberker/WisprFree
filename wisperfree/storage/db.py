@@ -50,6 +50,28 @@ CREATE TABLE IF NOT EXISTS training_runs (
     pairs_used INTEGER NOT NULL DEFAULT 0,
     detail TEXT
 );
+
+CREATE TABLE IF NOT EXISTS voice_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_text TEXT NOT NULL,     -- what the user read aloud (ground truth)
+    wav_path TEXT NOT NULL,
+    duration_s REAL NOT NULL,
+    sample_rate INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS asr_training_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    finished_at TEXT,
+    status TEXT NOT NULL DEFAULT 'running',  -- running | succeeded | failed
+    samples_used INTEGER NOT NULL DEFAULT 0,
+    minutes_used REAL NOT NULL DEFAULT 0,
+    wer_before REAL,               -- holdout WER of the base model
+    wer_after REAL,                -- holdout WER of the tuned model
+    model_dir TEXT,                -- CTranslate2 dir loadable by faster-whisper
+    detail TEXT
+);
 """
 
 DEFAULT_TONE_PROFILES = [

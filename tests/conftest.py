@@ -85,6 +85,25 @@ def tone_profiles(db) -> ToneProfileStore:
     return ToneProfileStore(db)
 
 
+@pytest.fixture
+def client(config, tmp_path, monkeypatch):
+    """API test client with hardware/network-facing pieces swapped for fakes."""
+    from fastapi.testclient import TestClient
+
+    from wisperfree.api import create_app
+    from wisperfree.daemon import Daemon
+
+    # Config lives in tmp so apply_config_patch never touches the real home dir
+    monkeypatch.setenv("WISPERFREE_CONFIG_DIR", str(tmp_path / "cfg"))
+    daemon = Daemon(config)
+    daemon.pipeline.asr = FakeASR()
+    daemon.pipeline.llm = FakeLLM(reply="Cleaned text.")
+    daemon.pipeline.injector = FakeInjector(config.injection)
+    daemon.pipeline.context_detector = FakeContextDetector()
+    yield TestClient(create_app(daemon))
+    daemon.db.close()
+
+
 def make_pipeline(config, dictionary, tone_profiles, asr=None, llm=None, app_name="Slack"):
     from wisperfree.pipeline import DictationPipeline
 

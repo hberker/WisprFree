@@ -106,6 +106,22 @@ class FinetuneConfig(BaseModel):
     ollama_output_model: str = "wisperfree-tuned"
 
 
+class VoiceTrainConfig(BaseModel):
+    """Fine-tuning Whisper itself on the user's recorded voice samples."""
+
+    # "auto" derives the HF model id from asr.model (base.en -> openai/whisper-base.en)
+    base_model: str = "auto"
+    min_minutes: float = 5.0  # refuse to train on less recorded audio
+    holdout_every: int = 10  # every Nth sample held out for the WER report
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.05
+    epochs: int = 3
+    learning_rate: float = 5e-4
+    batch_size: int = 2
+    quantization: str = "int8"  # CTranslate2 export quantization
+
+
 class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8765
@@ -119,6 +135,7 @@ class AppConfig(BaseModel):
     injection: InjectionConfig = Field(default_factory=InjectionConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
     finetune: FinetuneConfig = Field(default_factory=FinetuneConfig)
+    voicetrain: VoiceTrainConfig = Field(default_factory=VoiceTrainConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     data_dir: str = Field(default_factory=lambda: str(default_data_dir()))
 
@@ -128,6 +145,12 @@ class AppConfig(BaseModel):
 
     def finetune_dir(self) -> Path:
         return Path(self.finetune.output_dir or Path(self.data_dir) / "finetune")
+
+    def voice_samples_dir(self) -> Path:
+        return Path(self.data_dir) / "voice_samples"
+
+    def asr_models_dir(self) -> Path:
+        return Path(self.data_dir) / "asr_models"
 
 
 def config_path() -> Path:

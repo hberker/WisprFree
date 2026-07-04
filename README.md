@@ -104,6 +104,31 @@ ollama create wisperfree-tuned -f ~/.local/share/wisperfree/finetune/<run>/Model
 # point llm.model at wisperfree-tuned in settings
 ```
 
+## Training Whisper on your voice
+
+The **Voice training** tab runs a read-aloud workflow: WisperFree shows you
+sentences (phonetically balanced, with your dictionary terms woven in), you
+record yourself reading them, and each take becomes a perfectly labelled
+(audio → text) pair. Training then:
+
+1. holds out ~10% of your recordings,
+2. LoRA fine-tunes the Whisper checkpoint matching your configured model,
+3. reports **word error rate before → after** on the holdout, so you can see
+   whether it actually helped *your* voice,
+4. converts the merged model to CTranslate2 — it appears in the Whisper model
+   picker as "yours: …".
+
+```bash
+pip install -e ".[finetune]"
+# record ≥5 minutes in the Voice training tab, then "Train on my voice"
+# (or POST /api/voicetrain/trigger)
+```
+
+Expect the biggest gains for accents, non-native speech, unusual mics, and
+personal jargon; if your before-WER is already low, the report will tell you
+fine-tuning isn't worth it. A GPU makes training minutes-fast; on CPU/M-series
+treat it as an overnight job.
+
 ## Project layout
 
 ```
@@ -113,13 +138,14 @@ wisperfree/
 ├── llm/          # Stage 2 backends: Ollama + cleanup prompt builder
 ├── inject/       # native text injection per OS
 ├── context/      # active app/window detection per OS
-├── storage/      # SQLite: dictionary, corrections, tone profiles
-├── finetune/     # dataset export + LoRA trainer + job runner
+├── storage/      # SQLite: dictionary, corrections, tone profiles, voice samples
+├── finetune/     # LLM: dataset export + LoRA trainer + job runner
+├── voicetrain/   # ASR: reading prompts, WER report, Whisper LoRA + CT2 export
 ├── pipeline.py   # two-stage orchestration
 ├── daemon.py     # wiring + lifecycle
 └── api/          # localhost FastAPI for the tray app
 frontend/         # Electron menu-bar app + settings UI
-tests/            # 51 unit tests (fakes for ASR/LLM/injection)
+tests/            # unit tests (fakes for ASR/LLM/injection)
 ```
 
 ## Development
@@ -133,6 +159,9 @@ python -m pytest
 
 - All inference is local (whisper + Ollama on localhost).
 - The API binds `127.0.0.1` only.
-- Audio is processed in memory and never written to disk.
-- Dictionary, corrections, and fine-tune artifacts live in
+- Dictation audio is processed in memory and never written to disk. The one
+  exception is recordings you make on purpose in the Voice training tab —
+  those are stored locally under `~/.local/share/wisperfree/voice_samples/`
+  and can be deleted from the UI.
+- Dictionary, corrections, voice samples, and fine-tune artifacts live in
   `~/.local/share/wisperfree/` — delete the folder, everything is gone.

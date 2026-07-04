@@ -80,6 +80,7 @@
   <button data-tab="dictionary">Dictionary</button>
   <button data-tab="tones">Tone profiles</button>
   <button data-tab="history">History</button>
+  <button data-tab="voice">Voice training</button>
   <button data-tab="training">Training</button>
 </nav>
 <main>
@@ -166,6 +167,42 @@
   <h2 style="font-size:15px">Logged corrections</h2>
   <div class="card">
     <table><thead><tr><th>Raw</th><th>Final</th><th>App</th><th>Trained</th><th></th></tr></thead><tbody id="correction-rows"></tbody></table>
+  </div>
+</section>
+
+<section id="tab-voice">
+  <h2>Train Whisper on your voice</h2>
+  <p class="hint">Read the sentence aloud, keep the takes you like, then train.
+    Recordings stay in your local data folder and can be deleted below.
+    Gains are biggest for accents, unusual mics, and personal jargon —
+    the before/after accuracy report will show whether it helped.</p>
+  <div class="card" id="vt-session">
+    <p id="vt-prompt" style="font-size:19px; line-height:1.55; min-height:56px; margin:4px 0 14px"></p>
+    <div class="row">
+      <button class="action" id="btn-vt-record">● Record</button>
+      <button class="subtle" id="btn-vt-stop" disabled>■ Stop</button>
+      <audio id="vt-preview" controls style="display:none; height:32px"></audio>
+      <button class="subtle" id="btn-vt-use" style="display:none">✓ Use take</button>
+      <button class="subtle danger" id="btn-vt-retry" style="display:none">↺ Retry</button>
+      <button class="subtle" id="btn-vt-skip">Skip sentence</button>
+      <span id="vt-state" class="pill">ready</span>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row">
+      <label>Progress</label>
+      <span id="vt-progress" class="pill">0 recordings · 0.0 min</span>
+      <span class="hint" id="vt-goal"></span>
+    </div>
+    <div class="row">
+      <button class="action" id="btn-vt-train">Train on my voice</button>
+      <span id="vt-train-state" class="pill">idle</span>
+    </div>
+    <table><thead><tr><th>Started</th><th>Status</th><th>Samples</th><th>Minutes</th><th>Accuracy (WER before → after)</th><th>Detail</th></tr></thead><tbody id="vt-run-rows"></tbody></table>
+  </div>
+  <div class="card">
+    <h2 style="font-size:14px">Recorded samples</h2>
+    <table><thead><tr><th>Sentence</th><th>Length</th><th></th></tr></thead><tbody id="vt-sample-rows"></tbody></table>
   </div>
 </section>
 
@@ -408,15 +445,174 @@ $('btn-ft-save').onclick = async () => {
   toast('Schedule saved');
 };
 
+// ---- voice training (record yourself reading prompts) ----
+let vtPrompts = [];
+let vtIndex = 0;
+let vtStream = null, vtCtx = null, vtNode = null, vtBuffers = [], vtRate = 16000;
+let vtTakeBlob = null;
+
+function encodeWav(float32, rate) {
+  // 16-bit mono PCM WAV
+  const pcm = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const buffer = new ArrayBuffer(44 + pcm.length * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + pcm.length * 2, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, pcm.length * 2, true);
+  new Int16Array(buffer, 44).set(pcm);
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function vtNextPrompt() {
+  if (vtIndex >= vtPrompts.length) {
+    vtPrompts = await api('/api/voicetrain/prompts?n=20');
+    vtIndex = 0;
+  }
+  $('vt-prompt').textContent = '“' + vtPrompts[vtIndex] + '”';
+}
+
+function vtResetTake() {
+  vtTakeBlob = null;
+  $('vt-preview').style.display = 'none';
+  $('btn-vt-use').style.display = 'none';
+  $('btn-vt-retry').style.display = 'none';
+  $('btn-vt-record').disabled = false;
+  $('btn-vt-stop').disabled = true;
+  $('vt-state').textContent = 'ready';
+}
+
+$('btn-vt-record').onclick = async () => {
+  try {
+    vtStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) { toast('Microphone unavailable: ' + err.message); return; }
+  vtCtx = new AudioContext();
+  vtRate = vtCtx.sampleRate;
+  const source = vtCtx.createMediaStreamSource(vtStream);
+  vtNode = vtCtx.createScriptProcessor(4096, 1, 1);
+  vtBuffers = [];
+  vtNode.onaudioprocess = (e) => vtBuffers.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  source.connect(vtNode); vtNode.connect(vtCtx.destination);
+  $('btn-vt-record').disabled = true;
+  $('btn-vt-stop').disabled = false;
+  $('vt-state').textContent = 'recording…';
+};
+
+$('btn-vt-stop').onclick = () => {
+  if (vtNode) { vtNode.disconnect(); vtNode = null; }
+  if (vtCtx) { vtCtx.close(); vtCtx = null; }
+  if (vtStream) { vtStream.getTracks().forEach((t) => t.stop()); vtStream = null; }
+  const total = vtBuffers.reduce((n, b) => n + b.length, 0);
+  const joined = new Float32Array(total);
+  let offset = 0;
+  for (const b of vtBuffers) { joined.set(b, offset); offset += b.length; }
+  vtTakeBlob = encodeWav(joined, vtRate);
+  $('vt-preview').src = URL.createObjectURL(vtTakeBlob);
+  $('vt-preview').style.display = '';
+  $('btn-vt-use').style.display = '';
+  $('btn-vt-retry').style.display = '';
+  $('btn-vt-stop').disabled = true;
+  $('vt-state').textContent = 'review your take';
+};
+
+$('btn-vt-use').onclick = async () => {
+  if (!vtTakeBlob) return;
+  const bytes = new Uint8Array(await vtTakeBlob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  try {
+    await api('/api/voicetrain/samples', {
+      method: 'POST',
+      body: JSON.stringify({ prompt_text: vtPrompts[vtIndex], wav_base64: btoa(binary) }),
+    });
+    toast('Take saved');
+    vtIndex += 1;
+    vtResetTake();
+    await vtNextPrompt();
+    loadVoiceTraining();
+  } catch (err) { toast('Save failed: ' + err.message); }
+};
+
+$('btn-vt-retry').onclick = vtResetTake;
+$('btn-vt-skip').onclick = async () => { vtIndex += 1; vtResetTake(); vtNextPrompt(); };
+
+async function loadVoiceTraining() {
+  const status = await api('/api/status');
+  $('vt-train-state').textContent = status.voice_training_running ? 'training…' : 'idle';
+  $('vt-train-state').classList.toggle('ok', status.voice_training_running);
+
+  const listing = await api('/api/voicetrain/samples');
+  $('vt-progress').textContent =
+    `${listing.samples.length} recordings · ${listing.total_minutes.toFixed(1)} min`;
+  $('vt-goal').textContent =
+    listing.total_minutes < listing.min_minutes
+      ? `record at least ${listing.min_minutes} minutes to train (more is better)`
+      : 'enough audio to train — more still helps';
+  $('vt-sample-rows').innerHTML = listing.samples.map((s) => `
+    <tr><td>${esc(s.prompt_text)}</td><td>${s.duration_s.toFixed(1)}s</td>
+    <td><button class="subtle danger" onclick="vtRemoveSample(${s.id})">Delete</button></td></tr>
+  `).reverse().join('');
+
+  const runs = await api('/api/voicetrain/runs');
+  $('vt-run-rows').innerHTML = runs.length ? runs.map((r) => `
+    <tr><td>${esc(r.started_at)}</td>
+    <td><span class="pill ${r.status === 'succeeded' ? 'ok' : ''}">${esc(r.status)}</span></td>
+    <td>${r.samples_used}</td><td>${(r.minutes_used ?? 0).toFixed(1)}</td>
+    <td>${r.wer_before != null && r.wer_before >= 0
+        ? `${(r.wer_before * 100).toFixed(1)}% → ${(r.wer_after * 100).toFixed(1)}%`
+        : '—'}</td>
+    <td>${esc(r.detail)}</td></tr>
+  `).join('') : '<tr><td class="hint">No voice-training runs yet.</td></tr>';
+}
+window.vtRemoveSample = async (id) => {
+  await api(`/api/voicetrain/samples/${id}`, { method: 'DELETE' });
+  loadVoiceTraining();
+};
+$('btn-vt-train').onclick = async () => {
+  try {
+    await api('/api/voicetrain/trigger', { method: 'POST' });
+    toast('Voice training started — this can take a while');
+  } catch (err) { toast('Could not start: ' + err.message); }
+  loadVoiceTraining();
+};
+
+async function loadTunedModels() {
+  // Tuned models become selectable ASR models (faster-whisper loads dirs)
+  const models = await api('/api/voicetrain/models');
+  const select = $('cfg-asr-model');
+  const current = select.value;
+  [...select.querySelectorAll('option[data-tuned]')].forEach((o) => o.remove());
+  for (const dir of models) {
+    const option = document.createElement('option');
+    option.value = dir;
+    option.textContent = 'yours: ' + dir.split('/').slice(-2)[0];
+    option.dataset.tuned = '1';
+    select.appendChild(option);
+  }
+  select.value = current;
+}
+
 function refreshAll() {
   loadGeneral();
   loadDictionary().catch(() => {});
   loadTones().catch(() => {});
   loadHistory().catch(() => {});
   loadTraining().catch(() => {});
+  loadVoiceTraining().catch(() => {});
+  loadTunedModels().catch(() => {});
+  if (!$('vt-prompt').textContent) vtNextPrompt().catch(() => {});
 }
 refreshAll();
 setInterval(loadTraining, 5000);
+setInterval(() => { if ($('tab-voice').classList.contains('visible')) loadVoiceTraining(); }, 5000);
 </script>
 </body>
 </html>

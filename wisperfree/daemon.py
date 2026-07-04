@@ -20,7 +20,9 @@ from wisperfree.storage import (
     Database,
     DictionaryStore,
     ToneProfileStore,
+    VoiceSampleStore,
 )
+from wisperfree.voicetrain import VoiceTrainRunner
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +35,10 @@ class Daemon:
         self.corrections = CorrectionStore(self.db)
         self.tone_profiles = ToneProfileStore(self.db)
         self.finetune = FinetuneRunner(self.config, self.db, self.corrections)
+        self.voice_samples = VoiceSampleStore(
+            self.db, self.config.voice_samples_dir()
+        )
+        self.voicetrain = VoiceTrainRunner(self.config, self.db, self.voice_samples)
 
         self.asr = create_asr_backend(self.config.asr)
         self.llm = create_llm_backend(self.config.llm)
@@ -127,4 +133,5 @@ class Daemon:
             self._hotkey.rebind(self.config.hotkey.toggle)
         self.pipeline.config = self.config
         self.finetune.config = self.config
+        self.voicetrain.config = self.config
         return self.config

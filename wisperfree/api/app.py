@@ -43,6 +43,11 @@ class ConfigPatch(BaseModel):
     patch: dict
 
 
+class VoiceSampleIn(BaseModel):
+    prompt_text: str
+    wav_base64: str  # 16-bit mono PCM WAV, recorded in the settings UI
+
+
 def create_app(daemon: Daemon) -> FastAPI:
     app = FastAPI(title="WisperFree", version=__version__)
 
@@ -58,6 +63,7 @@ def create_app(daemon: Daemon) -> FastAPI:
             "llm_enabled": daemon.config.llm.enabled,
             "hotkey": daemon.config.hotkey.toggle,
             "training_running": daemon.finetune.running,
+            "voice_training_running": daemon.voicetrain.running,
         }
 
     @app.post("/api/dictation/toggle")
@@ -198,5 +204,55 @@ def create_app(daemon: Daemon) -> FastAPI:
     @app.get("/api/finetune/runs")
     def finetune_runs():
         return daemon.finetune.runs()
+
+    # ---- voice training (fine-tune Whisper on the user's voice) ---------------
+
+    @app.get("/api/voicetrain/prompts")
+    def voicetrain_prompts(n: int = 20):
+        from wisperfree.voicetrain import generate_prompts
+
+        return generate_prompts(daemon.dictionary.terms(), n=n)
+
+    @app.get("/api/voicetrain/samples")
+    def voicetrain_samples():
+        return {
+            "samples": [vars(s) for s in daemon.voice_samples.list()],
+            "total_minutes": round(daemon.voice_samples.total_minutes(), 2),
+            "min_minutes": daemon.config.voicetrain.min_minutes,
+        }
+
+    @app.post("/api/voicetrain/samples")
+    def voicetrain_add_sample(body: VoiceSampleIn):
+        import base64
+        import binascii
+
+        try:
+            wav_bytes = base64.b64decode(body.wav_base64, validate=True)
+        except (binascii.Error, ValueError):
+            raise HTTPException(status_code=422, detail="invalid base64 payload")
+        try:
+            return vars(daemon.voice_samples.add(body.prompt_text, wav_bytes))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    @app.delete("/api/voicetrain/samples/{sample_id}")
+    def voicetrain_remove_sample(sample_id: int):
+        if not daemon.voice_samples.remove(sample_id):
+            raise HTTPException(status_code=404, detail="sample not found")
+        return {"ok": True}
+
+    @app.post("/api/voicetrain/trigger")
+    def voicetrain_trigger():
+        if not daemon.voicetrain.trigger():
+            raise HTTPException(status_code=409, detail="training already running")
+        return {"started": True}
+
+    @app.get("/api/voicetrain/runs")
+    def voicetrain_runs():
+        return daemon.voicetrain.runs()
+
+    @app.get("/api/voicetrain/models")
+    def voicetrain_models():
+        return daemon.voicetrain.tuned_models()
 
     return app
