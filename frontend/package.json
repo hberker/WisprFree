@@ -1,0 +1,12 @@
+{
+  "name": "wisperfree-frontend",
+  "version": "0.1.0",
+  "description": "WisperFree tray app and settings UI",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
