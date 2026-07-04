@@ -86,7 +86,7 @@ def create_app(daemon: Daemon) -> FastAPI:
                 "llm_used": e.llm_used,
                 "timestamp": e.timestamp,
             }
-            for e in reversed(daemon.pipeline.history)
+            for e in daemon.pipeline.recent_history()
         ]
 
     # ---- Stage-2 preview (also used headless / in tests) -------------------

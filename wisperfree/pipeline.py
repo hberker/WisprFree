@@ -65,9 +65,16 @@ class DictationPipeline:
         self.tone_profiles = tone_profiles
         self.context_detector = context_detector or ContextDetector()
         self.history: list[DictationEvent] = []
+        self._history_lock = threading.Lock()
         self._chunks: "queue.Queue[np.ndarray]" = queue.Queue()
         self._worker: Optional[threading.Thread] = None
         self._running = threading.Event()
+
+    def recent_history(self, limit: int = 50) -> list[DictationEvent]:
+        """Newest-first snapshot, taken under lock so it can't tear against
+        the worker thread mutating ``history``."""
+        with self._history_lock:
+            return list(reversed(self.history[-limit:]))
 
     # ---- lifecycle --------------------------------------------------------
 
@@ -133,8 +140,9 @@ class DictationPipeline:
             llm_latency_s=llm_latency,
             llm_used=llm_used,
         )
-        self.history.append(event)
-        del self.history[:-50]  # keep the last 50 for the UI / corrections
+        with self._history_lock:
+            self.history.append(event)
+            del self.history[:-50]  # keep the last 50 for the UI / corrections
         log.info(
             "dictated %d chars (asr %.2fs, llm %.2fs, app=%s)",
             len(final), asr_latency, llm_latency, window.label,

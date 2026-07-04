@@ -1,6 +1,7 @@
 import numpy as np
 
 from tests.conftest import FakeASR, FakeLLM, make_pipeline, speech_audio
+from wisperfree.pipeline import DictationEvent
 
 
 def test_phase1_raw_injection_when_llm_disabled(config, dictionary, tone_profiles):
@@ -81,3 +82,50 @@ def test_process_text_stage2_only(config, dictionary, tone_profiles):
     assert event.final_text == "Cleaned."
     assert event.tone == "formal"
     assert event.asr_latency_s == 0.0
+
+
+def test_history_capped_and_newest_first(config, dictionary, tone_profiles):
+    pipeline, _ = make_pipeline(config, dictionary, tone_profiles)
+    for i in range(60):
+        pipeline.history.append(
+            DictationEvent(
+                raw_text=f"raw {i}", final_text=f"final {i}", app_name=None,
+                tone="neutral", asr_latency_s=0, llm_latency_s=0, llm_used=False,
+            )
+        )
+    recent = pipeline.recent_history(limit=50)
+    assert len(recent) == 50
+    assert recent[0].final_text == "final 59"  # newest first
+    assert recent[-1].final_text == "final 10"
+
+
+def test_recent_history_survives_concurrent_writes(config, dictionary, tone_profiles):
+    # The reader must never crash or tear while the worker mutates history.
+    import threading
+
+    pipeline, _ = make_pipeline(config, dictionary, tone_profiles)
+    stop = threading.Event()
+
+    def writer():
+        i = 0
+        while not stop.is_set():
+            with pipeline._history_lock:
+                pipeline.history.append(
+                    DictationEvent(
+                        raw_text="r", final_text=f"f{i}", app_name=None,
+                        tone="neutral", asr_latency_s=0, llm_latency_s=0,
+                        llm_used=False,
+                    )
+                )
+                del pipeline.history[:-50]
+            i += 1
+
+    t = threading.Thread(target=writer, daemon=True)
+    t.start()
+    try:
+        for _ in range(2000):
+            snap = pipeline.recent_history()
+            assert len(snap) <= 50  # never over cap, never raises
+    finally:
+        stop.set()
+        t.join(timeout=2)
